@@ -26,9 +26,11 @@ function extractMovieCandidates(text: string) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const query = searchParams.get("q") || "comfort movies for anxiety";
-  const apiKey = process.env.TAVILY_API_KEY;
+ const query = searchParams.get("q") || "comfort movies for anxiety";
+ const apiKey = process.env.TAVILY_API_KEY;
 
+console.log("TAVILY_API_KEY exists:", Boolean(apiKey));
+  console.log("TAVILY_API_KEY exists:", Boolean(apiKey));
   if (!apiKey) {
     return new Response(
       JSON.stringify({

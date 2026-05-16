@@ -42,9 +42,22 @@ type ChatMessage = {
   movies?: PlaylistMovie[];
 };
 
+type ReviewResult = {
+  title: string;
+  url: string;
+  source: string;
+  excerpt: string;
+  score?: number;
+};
+
 export default function HomePage() {
   const [query, setQuery] = useState("");
   const [stillQuery, setStillQuery] = useState("");
+  const [reviewQuery, setReviewQuery] = useState("");
+  const [reviewSummary, setReviewSummary] = useState("");
+  const [reviewResults, setReviewResults] = useState<ReviewResult[]>([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -280,6 +293,42 @@ export default function HomePage() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  async function searchMovieReviews() {
+    const movieTitle = reviewQuery.trim();
+    if (!movieTitle) return;
+
+    setReviewLoading(true);
+    setReviewError("");
+    setReviewSummary("");
+    setReviewResults([]);
+
+    try {
+      const response = await fetch(
+        `/api/reviews?movie=${encodeURIComponent(movieTitle)}`
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        setReviewError(result.error || "影评检索失败，请稍后再试。");
+        return;
+      }
+
+      setReviewSummary(result.summary || "");
+      setReviewResults(result.results || []);
+    } catch (error) {
+      console.error(error);
+      setReviewError("影评检索失败，请检查网络后再试。");
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  function clearMovieReviews() {
+    setReviewSummary("");
+    setReviewResults([]);
+    setReviewError("");
+  }
+
   return (
     <main className="min-h-screen bg-[#080A18] text-white px-6 pt-8 pb-28">
       <section className="mx-auto max-w-[390px]">
@@ -497,6 +546,94 @@ export default function HomePage() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="mb-6 rounded-[24px] bg-[#151A33] border border-white/10 p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-white/40 text-sm mb-2">网络影评检索</p>
+              <h3 className="text-2xl font-black">看看大家怎么评价</h3>
+              <p className="mt-2 text-sm leading-6 text-white/50">
+                输入片名，我会联网整理这部电影的影评摘要和原文来源。
+              </p>
+            </div>
+
+            {(reviewSummary || reviewResults.length > 0 || reviewError) && (
+              <button
+                onClick={clearMovieReviews}
+                className="shrink-0 rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white/60"
+              >
+                收起
+              </button>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              value={reviewQuery}
+              onChange={(event) => setReviewQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  searchMovieReviews();
+                }
+              }}
+              placeholder="例如：哈利波特 / 寄生虫"
+              className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+            />
+
+            <button
+              onClick={searchMovieReviews}
+              disabled={reviewLoading}
+              className={`rounded-full px-5 py-3 text-sm font-black ${
+                reviewLoading
+                  ? "bg-white/20 text-white/40"
+                  : "bg-cyan-400 text-slate-950"
+              }`}
+            >
+              {reviewLoading ? "检索中" : "看影评"}
+            </button>
+          </div>
+
+          {reviewError && (
+            <p className="mt-4 rounded-2xl bg-red-400/10 px-4 py-3 text-sm text-red-200">
+              {reviewError}
+            </p>
+          )}
+
+          {reviewSummary && (
+            <div className="mt-4 rounded-2xl bg-white/10 p-4">
+              <p className="text-sm leading-6 text-white/75">
+                {reviewSummary}
+              </p>
+            </div>
+          )}
+
+          {reviewResults.length > 0 && (
+            <div className="mt-4 space-y-3">
+              {reviewResults.map((result) => (
+                <a
+                  key={result.url}
+                  href={result.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-2xl bg-white/10 p-4 transition hover:bg-white/15"
+                >
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <h4 className="min-w-0 flex-1 text-sm font-black leading-5">
+                      {result.title}
+                    </h4>
+                    <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-[11px] text-white/45">
+                      {result.source}
+                    </span>
+                  </div>
+
+                  <p className="text-xs leading-5 text-white/55">
+                    {result.excerpt}
+                  </p>
+                </a>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-4">

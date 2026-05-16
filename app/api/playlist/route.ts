@@ -342,26 +342,28 @@ export async function GET(request: Request) {
         excludedTitles
       ).slice(0, limit);
 
-      return new Response(
-        JSON.stringify({
-          query: searchContext,
-          movies,
-          sources: [
-            {
-              title: "The Movie Database (TMDB)",
-              url: "https://www.themoviedb.org/",
-              content:
-                "开放式搜索已优先使用 TMDB 电影数据库，并根据本地已推荐电影 ID 做去重。",
+      if (movies.length > 0) {
+        return new Response(
+          JSON.stringify({
+            query: searchContext,
+            movies,
+            sources: [
+              {
+                title: "The Movie Database (TMDB)",
+                url: "https://www.themoviedb.org/",
+                content:
+                  "开放式搜索已优先使用 TMDB 电影数据库，并根据本地已推荐电影 ID 做去重。",
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
             },
-          ],
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json; charset=utf-8",
-          },
-        }
-      );
+          }
+        );
+      }
     } catch (error: unknown) {
       console.error("TMDB playlist search failed:", getErrorMessage(error));
     }

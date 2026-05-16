@@ -76,7 +76,7 @@ const genreNames: Record<number, string> = {
   10752: "战争",
 };
 
-const tmdbRequestTimeoutMs = 8000;
+const tmdbRequestTimeoutMs = 12000;
 
 const languageCodes: Record<string, string> = {
   英语: "en",
@@ -163,6 +163,70 @@ const curatedTitleSeeds: Array<{
   pattern: RegExp;
   titles: string[];
 }> = [
+  {
+    pattern: /焦虑|疲惫|低能量|压力|紧张|轻松|治愈|疗愈|不虐|comfort|healing|anxiety|stress|tired/i,
+    titles: [
+      "Paddington",
+      "Paddington 2",
+      "Little Forest",
+      "The Intern",
+      "Chef",
+      "Julie & Julia",
+      "Soul",
+      "The Secret Life of Walter Mitty",
+      "Our Little Sister",
+      "Kiki's Delivery Service",
+      "About Time",
+      "A Man Called Otto",
+    ],
+  },
+  {
+    pattern: /失恋|分手|后劲|不要太虐|爱情创伤|heartbreak|breakup/i,
+    titles: [
+      "About Time",
+      "Before Sunrise",
+      "Before Sunset",
+      "The Worst Person in the World",
+      "La La Land",
+      "Begin Again",
+      "Her",
+      "Eternal Sunshine of the Spotless Mind",
+      "Lost in Translation",
+      "Sing Street",
+      "500 Days of Summer",
+      "Past Lives",
+    ],
+  },
+  {
+    pattern: /深夜|独处|孤独|一个人|文艺|安静|late night|lonely|alone/i,
+    titles: [
+      "Her",
+      "Paterson",
+      "Columbus",
+      "Lost in Translation",
+      "Before Sunrise",
+      "Drive My Car",
+      "Aftersun",
+      "Moonlight",
+      "Frances Ha",
+      "The Secret Life of Walter Mitty",
+    ],
+  },
+  {
+    pattern: /周末|放松|朋友聚会|约会|开心|快乐|feel good|weekend|date night/i,
+    titles: [
+      "About Time",
+      "Paddington 2",
+      "Sing Street",
+      "La La Land",
+      "Chef",
+      "The Grand Budapest Hotel",
+      "Amélie",
+      "Before Sunrise",
+      "The Intern",
+      "Begin Again",
+    ],
+  },
   {
     pattern: /战争|战场|军事|二战|一战|反战|军旅|war|military|battle|wwii|world war/i,
     titles: [
@@ -278,29 +342,45 @@ async function tmdbFetch<T>(path: string, params: Record<string, string> = {}) {
     url.searchParams.set("api_key", credential.apiKey);
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), tmdbRequestTimeoutMs);
+  let lastError: unknown;
 
-  const response = await fetch(url, {
-    headers: credential.bearerToken
-      ? {
-          Authorization: `Bearer ${credential.bearerToken}`,
-          accept: "application/json",
-        }
-      : {
-          accept: "application/json",
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), tmdbRequestTimeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        headers: credential.bearerToken
+          ? {
+              Authorization: `Bearer ${credential.bearerToken}`,
+              accept: "application/json",
+            }
+          : {
+              accept: "application/json",
+            },
+        next: {
+          revalidate: 60 * 60,
         },
-    next: {
-      revalidate: 60 * 60,
-    },
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeout));
+        signal: controller.signal,
+      });
 
-  if (!response.ok) {
-    throw new Error(`TMDB request failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`TMDB request failed: ${response.status}`);
+      }
+
+      return response.json() as Promise<T>;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 400));
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  return response.json() as Promise<T>;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function imageUrl(path?: string | null, size = "w500") {
@@ -562,7 +642,7 @@ async function searchSeedMovies(
 ) {
   const excludedIds = parseExcludedIds(options.exclude);
   const limit = options.limit || 12;
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     seedTitles.slice(0, limit).map(async (title) => {
       const data = await tmdbFetch<{ results: TmdbMovieResult[] }>("/search/movie", {
         query: title,
@@ -575,9 +655,11 @@ async function searchSeedMovies(
     })
   );
 
-  return uniqueById(
-    results.filter((movie): movie is TmdbMovieResult => Boolean(movie))
-  )
+  const fulfilledMovies = results.flatMap((result) =>
+    result.status === "fulfilled" && result.value ? [result.value] : []
+  );
+
+  return uniqueById(fulfilledMovies)
     .filter((movie) => !excludedIds.has(movie.id))
     .filter((movie) => movie.poster_path && movie.overview)
     .slice(0, limit)
@@ -725,17 +807,22 @@ export async function recommendFromTmdb(
           limit,
         })
       : [];
-  const searchLimit = hasSpecificMovieQuery(queryContext) ? limit : 5;
-  const searchResults = await searchTmdbMovies(queryContext, {
-    exclude: options.exclude,
-    limit: searchLimit,
-  });
+  const searchResults = hasSpecificMovieQuery(queryContext)
+    ? await searchTmdbMovies(queryContext, {
+        exclude: options.exclude,
+        limit,
+      }).catch(() => [])
+    : [];
 
   const discoverResults = await discoverTmdbMovies(queryContext, {
     exclude: options.exclude,
     limit,
     filters: options.filters,
-  });
+  }).catch(() => []);
+
+  if (seedResults.length >= Math.min(4, limit)) {
+    return seedResults.slice(0, limit);
+  }
 
   const mixedResults = uniqueCardsById(
     seedResults.length > 0

@@ -1,4 +1,4 @@
-import { discoverTmdbMovies, hasTmdbCredential } from "@/app/lib/tmdb";
+import { hasTmdbCredential, recommendFromTmdb } from "@/app/lib/tmdb";
 
 type SearchResult = {
   title: string;
@@ -478,7 +478,7 @@ export async function GET(request: Request) {
 
   if (hasTmdbCredential()) {
     try {
-      const tmdbMovies = await discoverTmdbMovies(`${mood} ${scene}`, {
+      const tmdbMovies = await recommendFromTmdb(`${mood} ${scene}`, {
         exclude,
         limit: 6,
       });
